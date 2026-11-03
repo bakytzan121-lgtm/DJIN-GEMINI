@@ -3,9 +3,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const PORT = Number(process.env.PORT || 3000);
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 const PAGE = fs.readFileSync(path.join(__dirname, "public", "index.html"));
+let aiClient;
 
 function send(res, status, data, type = "application/json; charset=utf-8") {
   res.writeHead(status, {
@@ -34,6 +35,15 @@ function readBody(req) {
   });
 }
 
+async function getAI() {
+  if (!GEMINI_API_KEY) throw new Error("На сервере не задан GEMINI_API_KEY. Добавьте ключ Google AI Studio в Render → Environment.");
+  if (!aiClient) {
+    const { GoogleGenAI } = await import("@google/genai");
+    aiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  }
+  return aiClient;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
@@ -45,20 +55,13 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, {
       ok: true,
       assistant: "DJIN",
-      provider: "OPENAI",
-      openaiConfigured: Boolean(OPENAI_API_KEY),
-      model: OPENAI_MODEL
+      provider: "GEMINI",
+      geminiConfigured: Boolean(GEMINI_API_KEY),
+      model: GEMINI_MODEL
     });
   }
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
-    if (!OPENAI_API_KEY) {
-      return send(res, 503, {
-        ok: false,
-        error: "На сервере не задан OPENAI_API_KEY. Добавьте ключ в Render → Environment."
-      });
-    }
-
     let body;
     try { body = await readBody(req); }
     catch (error) { return send(res, 400, { ok: false, error: error.message }); }
@@ -67,47 +70,39 @@ const server = http.createServer(async (req, res) => {
     const safeMessages = messages
       .filter(m => m && ["user", "assistant"].includes(m.role) && typeof m.content === "string")
       .slice(-20)
-      .map(m => ({ role: m.role, content: m.content.slice(0, 12000) }));
+      .map(m => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content.slice(0, 12000) }]
+      }));
 
     if (!safeMessages.length || safeMessages[safeMessages.length - 1].role !== "user") {
       return send(res, 400, { ok: false, error: "Напишите сообщение для DJIN." });
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: OPENAI_MODEL,
-          messages: [
-            {
-              role: "system",
-              content: "Ты DJIN — самостоятельный, внимательный AI-ассистент. Отвечай на русском языке, если пользователь пишет по-русски. Давай точные пошаговые инструкции. Не утверждай, что выполнил действия во внешних сервисах, если это не подтверждено."
-            },
-            ...safeMessages
-          ],
-          temperature: 0.7
-        }),
-        signal: AbortSignal.timeout(60000)
+      const ai = await getAI();
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: safeMessages,
+        config: {
+          systemInstruction: "Ты DJIN — самостоятельный, внимательный AI-ассистент. Отвечай на русском языке, если пользователь пишет по-русски. Давай точные пошаговые инструкции. Не утверждай, что выполнил действия во внешних сервисах, если это не подтверждено."
+        }
       });
 
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const message = result.error?.message || `OpenAI API вернул ошибку ${response.status}`;
-        return send(res, response.status === 429 ? 429 : 502, { ok: false, error: message });
-      }
-
-      const answer = result.choices?.[0]?.message?.content;
+      const answer = response.text;
       if (!answer) return send(res, 502, { ok: false, error: "AI не вернул текст ответа." });
       return send(res, 200, { ok: true, assistant: "DJIN", reply: answer });
     } catch (error) {
-      const timeout = error.name === "TimeoutError" || error.name === "AbortError";
-      return send(res, 502, {
+      console.error("Gemini request failed:", error.message);
+      const message = error.message || "Не удалось связаться с Gemini.";
+      const status = Number(error.status || error.code);
+      return send(res, status === 429 ? 429 : 502, {
         ok: false,
-        error: timeout ? "Превышено время ожидания ответа. Попробуйте ещё раз." : "Не удалось связаться с AI-сервисом."
+        error: message.includes("GEMINI_API_KEY")
+          ? message
+          : status === 429
+            ? "Превышен лимит запросов Gemini. Попробуйте немного позже."
+            : "Не удалось получить ответ от AI-сервиса. Проверьте ключ Gemini и настройки Render."
       });
     }
   }
