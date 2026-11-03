@@ -1,28 +1,28 @@
 # DJIN
 
-Независимый веб-ассистент DJIN.
+Независимый AI-ассистент DJIN на базе Google Gemini.
 
-## Запуск локально
+## Локальный запуск
 
-Требуется Node.js 20 или новее.
+Требуется Node.js 22 или новее.
 
-```bash
-npm start
-```
-
-Откройте `http://localhost:3000`.
+1. Установите зависимости: `npm install`
+2. Задайте переменную окружения `GEMINI_API_KEY` (ключ Google AI Studio).
+3. Запустите: `npm start`
+4. Откройте `http://localhost:3000`.
 
 ## Развёртывание на Render
 
 Создайте Web Service из этого GitHub-репозитория:
 
 - Runtime: Node
-- Build Command: оставить пустым
+- Build Command: `npm install`
 - Start Command: `npm start`
-- Environment: `OPENAI_API_KEY` — секретный API-ключ OpenAI
-- Не добавляйте ключ в GitHub и не записывайте его в исходный код.
+- Node version: 22 или новее
+- Environment Variable: `GEMINI_API_KEY` — секретный ключ Google AI Studio.
+- Дополнительно: `GEMINI_MODEL` — модель Gemini; по умолчанию `gemini-flash-latest`.
 
-Дополнительно можно задать `OPENAI_MODEL`; по умолчанию используется `gpt-4o-mini`.
+Не добавляйте API-ключ в GitHub и не записывайте его в исходный код. Для этого проекта не нужен ключ OpenAI.
 
 Проверка состояния: `/health`.
 Интерфейс чата: корневая страница `/`.
