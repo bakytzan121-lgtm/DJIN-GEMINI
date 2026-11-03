@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#10131b">
+  <title>DJIN — AI-ассистент</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#10131b;color:#f3f5fa}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;flex-direction:column}
+    header{padding:18px 20px;border-bottom:1px solid #293041;display:flex;align-items:center;gap:12px}
+    .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#7c5cff,#27c5b8);display:grid;place-items:center;font-weight:800;font-size:21px}
+    h1{font-size:19px;margin:0}header p{margin:2px 0 0;color:#9ba5b8;font-size:12px}
+    #status{margin-left:auto;color:#a9b4c8;font-size:12px}
+    main{width:min(850px,100%);margin:0 auto;flex:1;display:flex;flex-direction:column;padding:22px 16px;gap:16px}
+    #messages{display:flex;flex-direction:column;gap:14px;flex:1}
+    .msg{max-width:90%;padding:13px 15px;border-radius:16px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+    .assistant{align-self:flex-start;background:#202737;border:1px solid #303b50}
+    .user{align-self:flex-end;background:#5140b8}
+    .welcome{color:#aeb8ca;text-align:center;margin:auto;max-width:440px;line-height:1.6}
+    form{display:flex;gap:10px;padding:10px;background:#1a202d;border:1px solid #30394b;border-radius:18px}
+    textarea{resize:vertical;min-height:48px;max-height:160px;flex:1;background:transparent;border:0;outline:0;color:#fff;font:inherit;padding:10px}
+    button{border:0;border-radius:13px;background:#7258ed;color:white;font-weight:700;padding:0 20px;cursor:pointer}
+    button:disabled{opacity:.5;cursor:wait}
+    footer{text-align:center;color:#778197;font-size:11px;padding:0 12px 16px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">D</div>
+    <div><h1>DJIN</h1><p>Твой AI-ассистент</p></div>
+    <div id="status">Проверка сервера…</div>
+  </header>
+  <main>
+    <section id="messages">
+      <div class="welcome" id="welcome"><strong>Привет! Я DJIN.</strong><br>Напиши, чем помочь — я готов к работе.</div>
+    </section>
+    <form id="form">
+      <textarea id="prompt" placeholder="Напиши сообщение…" required rows="1"></textarea>
+      <button id="send" type="submit">Отправить</button>
+    </form>
+  </main>
+  <footer>DJIN · Независимый AI-ассистент</footer>
+<script>
+  const messagesEl = document.getElementById("messages");
+  const form = document.getElementById("form");
+  const input = document.getElementById("prompt");
+  const button = document.getElementById("send");
+  const statusEl = document.getElementById("status");
+  const history = [];
+
+  function addMessage(role, text) {
+    document.getElementById("welcome")?.remove();
+    const node = document.createElement("div");
+    node.className = "msg " + role;
+    node.textContent = text;
+    messagesEl.appendChild(node);
+    node.scrollIntoView({behavior:"smooth",block:"end"});
+    return node;
+  }
+
+  async function checkHealth() {
+    try {
+      const r = await fetch("/health");
+      const data = await r.json();
+      statusEl.textContent = data.openaiConfigured ? "Сервер подключён" : "Нужен ключ API";
+    } catch {
+      statusEl.textContent = "Сервер недоступен";
+    }
+  }
+
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (!text || button.disabled) return;
+    history.push({role:"user",content:text});
+    addMessage("user",text);
+    input.value = "";
+    button.disabled = true;
+    button.textContent = "…";
+    const pending = addMessage("assistant","DJIN думает…");
+    try {
+      const response = await fetch("/api/chat", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({messages:history})
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "Ошибка запроса");
+      pending.textContent = data.reply;
+      history.push({role:"assistant",content:data.reply});
+    } catch (error) {
+      pending.textContent = "Ошибка: " + error.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = "Отправить";
+      input.focus();
+    }
+  });
+
+  checkHealth();
+</script>
+</body>
+</html>
