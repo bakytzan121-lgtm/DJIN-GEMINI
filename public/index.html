@@ -63,7 +63,7 @@
     try {
       const r = await fetch("/health");
       const data = await r.json();
-      statusEl.textContent = data.openaiConfigured ? "Сервер подключён" : "Нужен ключ API";
+      statusEl.textContent = data.geminiConfigured ? "Сервер подключён" : "Нужен ключ API";
     } catch {
       statusEl.textContent = "Сервер недоступен";
     }
